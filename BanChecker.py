@@ -5,22 +5,28 @@ import time
 import os
 from dotenv import load_dotenv
 
-# Load the .env file ALWAYS with the latest version
+from TelegramInformer import send_log, reset_channel
+
+PID_FILE = "banshield.pid"
+
+def write_pid():
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+def remove_pid():
+    if os.path.exists(PID_FILE):
+        os.remove(PID_FILE)
+
+write_pid()
 load_dotenv(override=True)
 
-# Fetch all settings (these are from .env)
 STEAM_PROFILE = os.getenv("ProfileToWatch", "")
-WATCHING_PROFILE_USERNAME = os.getenv("WatchingProfileUsername", "")
-WATCHING_PROFILE_PASSWORD = os.getenv("WatchingProfilePassword", "")
-WATCHING_PROFILE_SHARED_SECRET = os.getenv("WatchingProfileSharedSecret", "")
-WATCHING_PROFILE_IDENTITY_SECRET = os.getenv("WatchingProfileIdentitySecret", "")
-BANK_ACCOUNT_TRADE_URL = os.getenv("BankAccountTradeURL", "")
-BANK_ACCOUNT_USERNAME = os.getenv("BankAccountUsername", "")
-BANK_ACCOUNT_PASSWORD = os.getenv("BankAccountPassword", "")
-BANK_ACCOUNT_SHARED_SECRET = os.getenv("BankAccountSharedSecret", "")
-AUTO_ACCEPT = os.getenv("AutoAccept", "false")
+TELEGRAM_NOTIFY = os.getenv("TelegramNotify", "true").lower() == "true"
 
-CHECK_INTERVAL = 60  # seconds
+load_dotenv()
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "20"))
+if CHECK_INTERVAL < 20: CHECK_INTERVAL = 20
+if CHECK_INTERVAL > 300: CHECK_INTERVAL = 300
 
 BAN_PATTERNS = [
     "vac ban on record",
@@ -40,7 +46,6 @@ def check_ban(profile_url):
         if resp.status_code != 200:
             return f"[ERROR] HTTP {resp.status_code}"
         soup = BeautifulSoup(resp.text, "html.parser")
-
         ban_text = soup.find(
             string=lambda t: t and any(pattern in t.lower() for pattern in BAN_PATTERNS)
         )
@@ -50,8 +55,18 @@ def check_ban(profile_url):
     except Exception as e:
         return f"[ERROR] {str(e)}"
 
+def launch_watchdog():
+    # New console, always visible on Windows
+    try:
+        subprocess.Popen('start "" node WatchDog.js', shell=True)
+        print("[INFO] WatchDog.js launched in a new console window.", flush=True)
+    except Exception as e:
+        print(f"[ERROR] Failed to launch WatchDog.js: {str(e)}", flush=True)
+
 if __name__ == "__main__":
     print("[INFO] BanChecker.py started.", flush=True)
+    reset_channel()
+
     if not STEAM_PROFILE:
         print("[ERROR] ProfileToWatch not found! Check the .env file and ProfileToWatch value.", flush=True)
         exit(1)
@@ -60,19 +75,34 @@ if __name__ == "__main__":
     while True:
         print(f"[CHECK] {time.strftime('%Y-%m-%d %H:%M:%S')} | Checking profile: {profile_url}", flush=True)
         result = check_ban(profile_url)
-        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {result}", flush=True)
-
+        
         if "[ALERT]" in result:
+            if TELEGRAM_NOTIFY:
+                send_log(1)
+            print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {result}", flush=True)
             print("[ACTION] Ban detected, SendTrade.js starting...", flush=True)
             try:
-                result = subprocess.run(["node", "SendTrade.js"], capture_output=True, text=True)
-                if result.returncode != 0:
-                    print(f"[ERROR] SendTrade.js failed to run: {result.stderr}", flush=True)
+                result_proc = subprocess.run(["node", "SendTrade.js"], capture_output=True, text=True)
+                if result_proc.returncode != 0:
+                    print(f"[ERROR] SendTrade.js failed to run: {result_proc.stderr}", flush=True)
                 else:
-                    print(f"[INFO] SendTrade.js ran: {result.stdout}", flush=True)
+                    print(f"[INFO] SendTrade.js ran: {result_proc.stdout}", flush=True)
             except Exception as e:
                 print(f"[ERROR] Error while starting SendTrade.js: {str(e)}", flush=True)
+            
+            try:
+                launch_watchdog()
+            except Exception as e:
+                print(f"[ERROR] Error while starting WatchDog.js: {str(e)}", flush=True)
+
             print("[INFO] SendTrade.js finished, BanChecker.py shutting down.", flush=True)
             exit(0)
+        else:
+            if TELEGRAM_NOTIFY:
+                send_log(0)
+            print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {result}", flush=True)
 
         time.sleep(CHECK_INTERVAL)
+
+import atexit
+atexit.register(remove_pid)
