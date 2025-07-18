@@ -37,6 +37,37 @@ const identitySecret = process.env.WatchingProfileIdentitySecret;
 const tradeURL = process.env.BankAccountTradeURL;
 const autoAccept = (process.env.AutoAccept || "false").toLowerCase() === "true";
 
+// -------- INVENTORY_TYPE DESTEĞİ --------
+const inventoryTypeRaw = (process.env.INVENTORY_TYPE || "all").toLowerCase().replace(/\s+/g, "");
+let inventoryTypes = inventoryTypeRaw.split(",");
+if (inventoryTypes.includes("all")) {
+    inventoryTypes = ["all"];
+}
+
+// Bu appid/contextid eşlemesi sabit (değiştirme):
+const GAME_INVENTORIES = {
+    cs2:   { appid: 730, contextid: 2 },
+    tf2:   { appid: 440, contextid: 2 },
+    dota2: { appid: 570, contextid: 2 },
+    all: [
+        { appid: 730, contextid: 2 },   // CS:GO
+        { appid: 440, contextid: 2 },   // TF2
+        { appid: 570, contextid: 2 },   // Dota2
+        { appid: 753, contextid: 6 }    // Steam collectibles
+    ]
+};
+
+let INVENTORIES = [];
+if (inventoryTypes.includes("all")) {
+    INVENTORIES = GAME_INVENTORIES.all;
+} else {
+    if (inventoryTypes.includes("cs2")) INVENTORIES.push(GAME_INVENTORIES.cs2);
+    if (inventoryTypes.includes("tf2")) INVENTORIES.push(GAME_INVENTORIES.tf2);
+    if (inventoryTypes.includes("dota2")) INVENTORIES.push(GAME_INVENTORIES.dota2);
+}
+
+// -----------------------------------------
+
 if (!username || !password || !sharedSecret || !identitySecret || !tradeURL) {
     console.error("All .env information must be complete!");
     process.exit(1);
@@ -49,13 +80,6 @@ const manager = new TradeOfferManager({
     community: community,
     language: "en"
 });
-
-const INVENTORIES = [
-    { appid: 730, contextid: 2 },   // CS:GO
-    { appid: 440, contextid: 2 },   // TF2
-    { appid: 570, contextid: 2 },   // Dota2
-    { appid: 753, contextid: 6 },   // Steam collectible cards and gifts
-];
 
 const RETRY_INTERVAL = 15000; // 15 seconds
 
@@ -86,6 +110,10 @@ client.on('webSession', (sessionID, cookies) => {
 function sendAllTradableItems() {
     let allItems = [];
     let processed = 0;
+    if (INVENTORIES.length === 0) {
+        console.log("No inventory types selected in config!");
+        process.exit(0);
+    }
 
     INVENTORIES.forEach(({appid, contextid}) => {
         manager.getInventoryContents(appid, contextid, true, (err, inventory) => {
