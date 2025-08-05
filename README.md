@@ -1,6 +1,17 @@
 # BanShield-V2.0.2
 
-Last Update: 29.07.2025
+# Last Update: 05.08.2025
+Fixed:
+Items were being sent to the backup account even when the account was not banned. This issue is now resolved.
+
+Added multi-check ban detection:
+Instead of triggering item transfers on a single ban detection, the bot now checks for a ban 10 times in a row (with short delays).
+
+False positive prevention:
+The item transfer process is only triggered if at least 2 out of 10 checks detect a ban.
+This prevents items from being transferred due to one-off web errors or Steam page issues.
+
+
 
 BanShield-V2 is an advanced, automated tool designed to monitor Steam profiles for VAC (Valve Anti-Cheat) or game bans and protect in-game inventories by transferring items to a designated backup account upon ban detection. The project integrates a Python-based ban monitoring system with a modern PyQt5 GUI and Node.js scripts for seamless Steam trade operations. Optimized for both Windows and Linux, it is launched via an intuitive graphical interface and includes enhanced features for user convenience and reliability.
 
